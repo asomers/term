@@ -21,6 +21,7 @@ appveyor = { repository = "Stebalien/term" }
 [dependencies]
 byteorder = "1.2.1"
 dirs = "2.0.1"
+libc = { git = "https://github.com/asomers/libc", rev = "5b46a0f10d"}
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["consoleapi", "wincon", "handleapi", "fileapi"] }

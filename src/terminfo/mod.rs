@@ -18,7 +18,6 @@ use std::io;
 use std::io::BufReader;
 use std::path::Path;
 
-
 #[cfg(windows)]
 use win;
 
@@ -100,6 +99,9 @@ impl TermInfo {
                 Err(e) => return Err(e),
             }
         }
+        if let Ok(Some(term)) = TermInfo::from_termcap(name) {
+            return Ok(term);
+        }
         // Basic ANSI fallback terminal.
         if is_ansi(name) {
             let mut strings = HashMap::new();
@@ -136,6 +138,16 @@ impl TermInfo {
         let file = File::open(path).map_err(::Error::Io)?;
         let mut reader = BufReader::new(file);
         parse(&mut reader, false)
+    }
+
+    #[cfg(not(target_os = "freebsd"))]
+    fn from_termcap(_name: &str) -> Result<Option<TermInfo>> {
+        Ok(None)
+    }
+
+    #[cfg(target_os = "freebsd")]
+    fn from_termcap(name: &str) -> Result<Option<TermInfo>> {
+        termcap::get_entry(name).or(Err(::Error::TerminfoEntryNotFound))
     }
 
     /// Retrieve a capability `cmd` and expand it with `params`, writing result to `out`.
@@ -253,6 +265,8 @@ pub mod parser {
     mod names;
 }
 pub mod parm;
+#[cfg(target_os = "freebsd")]
+mod termcap;
 
 fn cap_for_attr(attr: Attr) -> &'static str {
     match attr {
