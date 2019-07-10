@@ -43,12 +43,6 @@ fn read_byte(r: &mut io::Read) -> io::Result<u8> {
 /// Parse a compiled terminfo entry, using long capability names if `longnames`
 /// is true
 pub fn parse(file: &mut io::Read, longnames: bool) -> Result<TermInfo> {
-    let (bnames, snames, nnames) = if longnames {
-        (boolfnames, stringfnames, numfnames)
-    } else {
-        (boolnames, stringnames, numnames)
-    };
-
     // Check magic number
     let magic = file.read_u16::<LittleEndian>()?;
 
@@ -111,7 +105,13 @@ pub fn parse(file: &mut io::Read, longnames: bool) -> Result<TermInfo> {
     let bools_map = (0..bools_bytes)
         .filter_map(|i| match read_byte(file) {
             Err(e) => Some(Err(e)),
-            Ok(1) => Some(Ok((bnames[i], true))),
+            Ok(1) => {
+                if longnames {
+                    Some(Ok((boolnames[i].long, true)))
+                } else {
+                    Some(Ok((boolnames[i].short, true)))
+                }
+            },
             Ok(_) => None,
         })
         .collect::<io::Result<HashMap<_, _>>>()?;
@@ -123,7 +123,13 @@ pub fn parse(file: &mut io::Read, longnames: bool) -> Result<TermInfo> {
     let numbers_map = (0..numbers_count)
         .filter_map(|i| match read_number(file) {
             Ok(0xFFFF) => None,
-            Ok(n) => Some(Ok((nnames[i], n))),
+            Ok(n) => {
+                if longnames {
+                    Some(Ok((numnames[i].long, n)))
+                } else {
+                    Some(Ok((numnames[i].short, n)))
+                }
+            },
             Err(e) => Some(Err(e)),
         })
         .collect::<io::Result<HashMap<_, _>>>()?;
@@ -147,10 +153,10 @@ pub fn parse(file: &mut io::Read, longnames: bool) -> Result<TermInfo> {
             .map(|(i, offset)| {
                 let offset = offset as usize;
 
-                let name = if snames[i] == "_" {
-                    stringfnames[i]
+                let name = if longnames {
+                    stringnames[i].long
                 } else {
-                    snames[i]
+                    stringnames[i].short
                 };
 
                 if offset == 0xFFFE {
@@ -181,17 +187,4 @@ pub fn parse(file: &mut io::Read, longnames: bool) -> Result<TermInfo> {
         numbers: numbers_map,
         strings: string_map,
     })
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::{boolfnames, boolnames, numfnames, numnames, stringfnames, stringnames};
-
-    #[test]
-    fn test_veclens() {
-        assert_eq!(boolfnames.len(), boolnames.len());
-        assert_eq!(numfnames.len(), numnames.len());
-        assert_eq!(stringfnames.len(), stringnames.len());
-    }
 }
