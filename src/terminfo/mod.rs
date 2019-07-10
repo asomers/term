@@ -263,10 +263,10 @@ pub mod parser {
     //! ncurses-compatible compiled terminfo format parsing (term(5))
     pub mod compiled;
     mod names;
+    #[cfg(target_os = "freebsd")]
+    mod termcap;
 }
 pub mod parm;
-#[cfg(target_os = "freebsd")]
-mod termcap;
 
 fn cap_for_attr(attr: Attr) -> &'static str {
     match attr {

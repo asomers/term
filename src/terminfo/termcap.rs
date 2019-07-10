@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use std::{
+    collections::HashMap,
     ffi::CString,
     io::{self, Write},
     mem,
@@ -16,7 +17,7 @@ use std::{
     slice
 };
 use super::TermInfo;
-//use terminfo::Error::*;
+pub use terminfo::parser::names::*;
 
 pub(super) struct Database(ptr::NonNull<libc::DB>);
 
@@ -96,6 +97,10 @@ fn parse(entry: &str) -> io::Result<Option<TermInfo>> {
     let mut fields = entry.split(":");
     let names_str = fields.next().unwrap();
     let term_names: Vec<String> = names_str.split('|').map(|s| s.to_owned()).collect();
+    let bool_name_map = for capname in boolnames {
+        Ok((capname.code, capname.short))
+    }.collect::<io::Result<HashMap<_, _>>>()?;
+    let bools = HashMap::new();
     for field in fields {
         if field == "\t" || field == "\0" {
             continue;
@@ -111,7 +116,13 @@ fn parse(entry: &str) -> io::Result<Option<TermInfo>> {
             println!("{} # {}", parts.next().unwrap(), parts.next().unwrap());
         } else {
             // A boolean capability
-            println!("{}", field);
+            if let Some(name) = bool_name_map.get(field) {
+                println!("{} => true", field);
+                bools.insert(name, true);
+            } else {
+                writeln!(io::stderr,
+                    "WARNING: unknown terminal capability code {}", field);
+            }
         }
     }
     // TODO: create a TermInfo from dlslice
