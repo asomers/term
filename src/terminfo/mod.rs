@@ -27,6 +27,8 @@ use Terminal;
 use Result;
 use self::searcher::get_dbpath_for_term;
 use self::parser::compiled::parse;
+#[cfg(target_os = "freebsd")]
+use self::parser::termcap;
 use self::parm::{expand, Param, Variables};
 use self::Error::*;
 
@@ -151,8 +153,8 @@ impl TermInfo {
     }
 
     /// Retrieve a capability `cmd` and expand it with `params`, writing result to `out`.
-    pub fn apply_cap(&self, cmd: &str, params: &[Param], out: &mut io::Write) -> Result<()> {
-        match self.strings.get(cmd) {
+    pub fn apply_cap(&self, cap: &str, params: &[Param], out: &mut io::Write) -> Result<()> {
+        match self.strings.get(cap) {
             Some(cmd) => match expand(cmd, params, &mut Variables::new()) {
                 Ok(s) => {
                     out.write_all(&s)?;
@@ -264,7 +266,7 @@ pub mod parser {
     pub mod compiled;
     mod names;
     #[cfg(target_os = "freebsd")]
-    mod termcap;
+    pub(crate) mod termcap;
 }
 pub mod parm;
 

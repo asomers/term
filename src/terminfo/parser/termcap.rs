@@ -14,15 +14,16 @@ use std::{
     io::{self, Write},
     mem,
     ptr,
-    slice
+    slice,
+    str::FromStr
 };
-use super::TermInfo;
+use super::super::TermInfo;
 pub use terminfo::parser::names::*;
 
-pub(super) struct Database(ptr::NonNull<libc::DB>);
+pub(crate) struct Database(ptr::NonNull<libc::DB>);
 
 impl Database {
-    pub(super) fn open() -> io::Result<Database> {
+    pub(crate) fn open() -> io::Result<Database> {
         let dbpath = CString::new("/usr/share/misc/termcap.db").unwrap();
         unsafe {
             let p = libc::dbopen(dbpath.as_ptr(), libc::O_RDONLY, 0,
@@ -34,7 +35,7 @@ impl Database {
         }
     }
 
-    pub(super) fn get(&self, key: &libc::DBT) -> io::Result<&mut [u8]> {
+    pub(crate) fn get(&self, key: &libc::DBT) -> io::Result<&mut [u8]> {
         let mut data = mem::MaybeUninit::<libc::DBT>::uninit();
         unsafe {
             let r = ((*self.0.as_ptr()).get)(self.0.as_ptr(),
@@ -60,7 +61,7 @@ impl Drop for Database {
     }
 }
 
-pub(super) fn get_entry(name: &str) -> io::Result<Option<TermInfo>> {
+pub(crate) fn get_entry(name: &str) -> io::Result<Option<TermInfo>> {
     let db = Database::open()?;
     /*
      * Looking up the info is a 2-step process.  In the first step we
@@ -92,39 +93,69 @@ pub(super) fn get_entry(name: &str) -> io::Result<Option<TermInfo>> {
 }
 
 fn parse(entry: &str) -> io::Result<Option<TermInfo>> {
-//fn parse(entry: &[u8]) -> io::Result<Option<TermInfo>> {
-    //dbg!(&entry);
     let mut fields = entry.split(":");
     let names_str = fields.next().unwrap();
+
+    let bool_name_map = boolnames.iter().enumerate().map(|(i, capname)| {
+        Ok((capname.code, i))
+    }).collect::<io::Result<HashMap<_, _>>>()?;
+    let num_name_map = numnames.iter().enumerate().map(|(i, capname)| {
+        Ok((capname.code, i))
+    }).collect::<io::Result<HashMap<_, _>>>()?;
+    let string_name_map = stringnames.iter().enumerate().map(|(i, capname)| {
+        Ok((capname.code, i))
+    }).collect::<io::Result<HashMap<_, _>>>()?;
+
     let term_names: Vec<String> = names_str.split('|').map(|s| s.to_owned()).collect();
-    let bool_name_map = for capname in boolnames {
-        Ok((capname.code, capname.short))
-    }.collect::<io::Result<HashMap<_, _>>>()?;
-    let bools = HashMap::new();
+    let mut bools = HashMap::new();
+    let mut nums = HashMap::new();
+    let mut strings = HashMap::new();
+
     for field in fields {
         if field == "\t" || field == "\0" {
             continue;
         }
-        //dbg!(&field);
         if !field.starts_with("#") && field.contains("=") {
             // A string capability
             let mut parts = field.splitn(2, "=");
-            println!("{} = {}", parts.next().unwrap(), parts.next().unwrap());
+            let code = parts.next().unwrap();
+            let value = parts.next().unwrap();
+            // Replace literal r"\E" with the ASCII escape byte
+            let cmd = value.replace(r"\E", "\x1B");
+            if let Some(i) = string_name_map.get(code) {
+                strings.insert(stringnames[*i].short, cmd.as_bytes().to_owned());
+            } else {
+                writeln!(io::stderr(),
+                    "WARNING: unknown terminal capability code {}", code)
+                    .unwrap();
+            }
         } else if !field.starts_with("#") && field[1..].contains("#") {
             // A numeric capability
             let mut parts = field.splitn(2, "#");
-            println!("{} # {}", parts.next().unwrap(), parts.next().unwrap());
+            let code = parts.next().unwrap();
+            let value = u32::from_str(parts.next().unwrap()).unwrap();
+            if let Some(i) = num_name_map.get(code) {
+                nums.insert(numnames[*i].short, value);
+            } else {
+                writeln!(io::stderr(),
+                    "WARNING: unknown terminal capability code {}", code)
+                    .unwrap();
+            }
         } else {
             // A boolean capability
-            if let Some(name) = bool_name_map.get(field) {
-                println!("{} => true", field);
-                bools.insert(name, true);
+            if let Some(i) = bool_name_map.get(field) {
+                bools.insert(boolnames[*i].short, true);
             } else {
-                writeln!(io::stderr,
-                    "WARNING: unknown terminal capability code {}", field);
+                writeln!(io::stderr(),
+                    "WARNING: unknown terminal capability code {}", field)
+                    .unwrap();
             }
         }
     }
-    // TODO: create a TermInfo from dlslice
-    Ok(None)
+    Ok(Some(TermInfo {
+        names: term_names,
+        bools: bools,
+        numbers: nums,
+        strings: strings,
+    }))
 }

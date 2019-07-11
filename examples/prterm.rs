@@ -9,6 +9,13 @@ fn main() {
     // correct then the terminal really works.
     let mut t = term::stdout().unwrap();
 
+    if let Ok(_) = t.attr(term::Attr::Bold) {
+        writeln!(t, "Bold!").unwrap();
+        t.reset().unwrap();
+    } else {
+        writeln!(t, "Bold not supported").unwrap();
+    }
+
     if t.supports_color() {
         t.fg(term::color::GREEN).unwrap();
         writeln!(t, "Foreground green").unwrap();
@@ -19,13 +26,6 @@ fn main() {
         t.reset().unwrap();
     } else {
         writeln!(t, "Color not supported").unwrap();
-    }
-
-    if let Ok(_) = t.attr(term::Attr::Bold) {
-        writeln!(t, "Bold!").unwrap();
-        t.reset().unwrap();
-    } else {
-        writeln!(t, "Bold not supported").unwrap();
     }
 
     write!(t, "overwrite").unwrap();
